@@ -87,6 +87,7 @@ public class ConcurrentBag<T extends IConcurrentBagEntryHolder> implements AutoC
     return ThreadUtils.isCarrierThreadLocalAvailable() || !Thread.currentThread().isVirtual();
   }
 
+
   /**
    * 借出
    *
@@ -100,19 +101,18 @@ public class ConcurrentBag<T extends IConcurrentBagEntryHolder> implements AutoC
 
     final boolean emptyPredicate = Objects.isNull(predicate);
 
+    predicate = predicate == null ? (bag) -> true : predicate;
+
     // Try the thread-local list first
     // 不是虚拟线程或者说是支持CarrierThreadLocal我们才从线程本地获取
     if (isSupportGetFromThreadLocal()) {
       final var list = threadList.get();
-      final var threadListiterator = list.listIterator(list.size() - 1);
-      while (threadListiterator.hasPrevious()) {
-        final WeakReference<T> entry = threadListiterator.previous();
-        final T bagEntry = entry.get();
-        if (bagEntry == null || bagEntry.getState() != STATE_NOT_IN_USE) {
-          threadListiterator.remove();
-        } else if ((emptyPredicate || predicate.test(bagEntry)) && bagEntry.compareAndSet(
-            STATE_NOT_IN_USE, STATE_IN_USE)) {
-          threadListiterator.remove();
+      for (var i = list.size() - 1; i >= 0; i--) {
+        final WeakReference<T> reference = list.remove(i);
+        final var bagEntry = reference.get();
+        if (bagEntry != null && predicate.test(bagEntry) && bagEntry.compareAndSet(STATE_NOT_IN_USE,
+            STATE_IN_USE)) {
+          list.remove(i);
           return bagEntry;
         }
       }
@@ -122,11 +122,8 @@ public class ConcurrentBag<T extends IConcurrentBagEntryHolder> implements AutoC
     final int waiting = waiters.incrementAndGet();
 
     try {
-      final Iterator<T> iterator = sharedList.iterator();
-      while (iterator.hasNext()) {
-        final T bagEntry = iterator.next();
-        if ((emptyPredicate || predicate.test(bagEntry)) && bagEntry.compareAndSet(STATE_NOT_IN_USE,
-            STATE_IN_USE)) {
+      for (T bagEntry : sharedList) {
+        if (predicate.test(bagEntry) && bagEntry.compareAndSet(STATE_NOT_IN_USE, STATE_IN_USE)) {
           if (waiting > 1) {
             addBagItem(emptyPredicate, waiting - 1);
           }
