@@ -80,8 +80,7 @@ public class ConcurrentBag<T extends IConcurrentBagEntryHolder> implements AutoC
     //也是为了快速借出,在归还的时候添加到头部(采用LRU的机制)
     this.sharedList = new ConcurrentLinkedHashSet<>();
     //为了达到快速借出的话,归还添加的时候是尾部添加,然后我们借出的时候是尾部遍历
-    this.threadList = ThreadUtils.createThreadLocal(
-        () -> new FastList<>(IConcurrentBagEntryHolder.class, 16));
+    this.threadList = ThreadUtils.createThreadLocal(() -> new FastList<>(WeakReference.class, 16));
   }
 
   private boolean isSupportGetFromThreadLocal() {

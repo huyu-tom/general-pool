@@ -4,7 +4,6 @@ import static java.lang.Thread.currentThread;
 import static java.util.concurrent.TimeUnit.SECONDS;
 
 import jakarta.annotation.Nonnull;
-import java.util.Objects;
 import java.util.concurrent.BlockingQueue;
 import java.util.concurrent.LinkedBlockingQueue;
 import java.util.concurrent.RejectedExecutionHandler;
@@ -88,12 +87,7 @@ public class ThreadUtils {
   @Nonnull
   public static <T> ThreadLocal<T> createThreadLocal(Supplier<? extends T> supplier) {
     if (isCarrierThreadLocalAvailable()) {
-      return new CarrierThreadLocal<T>() {
-        @Override
-        protected T initialValue() {
-          return supplier.get();
-        }
-      };
+      return new SuppliedCarrierThreadLocal(supplier);
     } else {
       return ThreadLocal.withInitial(supplier);
     }
