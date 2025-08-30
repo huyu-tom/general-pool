@@ -53,7 +53,7 @@ import org.slf4j.LoggerFactory;
  */
 public final class EntryPool<T extends Entry> implements IBagStateListener {
 
-  private final Logger logger = LoggerFactory.getLogger(EntryPool.class);
+  private final Logger LOGGER = LoggerFactory.getLogger(EntryPool.class);
 
   public static final int POOL_NORMAL = 0;
   public static final int POOL_SHUTDOWN = 2;
@@ -202,6 +202,11 @@ public final class EntryPool<T extends Entry> implements IBagStateListener {
     } catch (InterruptedException e) {
       Thread.currentThread().interrupt();
       throw new RuntimeException(poolName + " - Interrupted during connection acquisition", e);
+    } catch (TimeoutException timeoutException) {
+      throw timeoutException;
+    } catch (Throwable e) {
+      LOGGER.error("get entry Unexpected exception ", e);
+      throw new RuntimeException(poolName + " - get entry Unexpected exception ", e);
     }
   }
 
@@ -240,7 +245,7 @@ public final class EntryPool<T extends Entry> implements IBagStateListener {
 
       addEntryExecutor.shutdown();
 //      if (!addEntryExecutor.awaitTermination(getLoginTimeout(), SECONDS)) {
-//        logger.warn("Timed-out waiting for add connection executor to shutdown");
+//        LOGGER.warn("Timed-out waiting for add connection executor to shutdown");
 //      }
 
       destroyHouseKeepingExecutorService();
@@ -254,7 +259,7 @@ public final class EntryPool<T extends Entry> implements IBagStateListener {
 
       clearEntryExecutor.shutdown();
       if (!clearEntryExecutor.awaitTermination(10L, SECONDS)) {
-        logger.warn("Timed-out waiting for clear entry executor to shutdown");
+        LOGGER.warn("Timed-out waiting for clear entry executor to shutdown");
       }
     } finally {
       logPoolState("After shutdown ");
@@ -352,8 +357,8 @@ public final class EntryPool<T extends Entry> implements IBagStateListener {
    * @param prefix an optional prefix to prepend the log message
    */
   void logPoolState(String... prefix) {
-    if (logger.isDebugEnabled()) {
-      logger.debug("{} - {}stats (total={}, active={}, idle={}, waiting={})", poolName,
+    if (LOGGER.isDebugEnabled()) {
+      LOGGER.debug("{} - {}stats (total={}, active={}, idle={}, waiting={})", poolName,
           (prefix.length > 0 ? prefix[0] : ""), getTotalEntry(), getActiveEntry(), getIdleEntry(),
           getThreadsAwaitingEntry());
     }
@@ -415,7 +420,7 @@ public final class EntryPool<T extends Entry> implements IBagStateListener {
     } catch (Exception e) {
       if (poolState
           == POOL_NORMAL) { // we check POOL_NORMAL to avoid a flood of messages if shutdown() is running concurrently
-        logger.debug("{} - Cannot acquire entry from factory", poolName, e);
+        LOGGER.debug("{} - Cannot acquire entry from factory", poolName, e);
       }
     }
 
@@ -442,7 +447,7 @@ public final class EntryPool<T extends Entry> implements IBagStateListener {
         addEntryExecutor.submit(isAfterAdd ? postFillPoolEntryCreator : poolEntryCreator);
       }
     } else if (isAfterAdd) {
-      logger.debug("{} - Fill pool skipped, pool has sufficient level or currently being filled.",
+      LOGGER.debug("{} - Fill pool skipped, pool has sufficient level or currently being filled.",
           poolName);
     }
   }
@@ -536,11 +541,11 @@ public final class EntryPool<T extends Entry> implements IBagStateListener {
           if (poolEntry != null) {
             added = true;
             entryBag.add(poolEntry);
-            logger.debug("{} - Added entry {}", poolName, poolEntry.entry());
+            LOGGER.debug("{} - Added entry {}", poolName, poolEntry.entry());
             break;
           } else {  // failed to get connection from db, sleep and retry
             if (loggingPrefix != null && backoffMs % 50 == 0) {
-              logger.debug("{} - entry add failed, sleeping with backoff: {}ms", poolName,
+              LOGGER.debug("{} - entry add failed, sleeping with backoff: {}ms", poolName,
                   backoffMs);
             }
             quietlySleep(backoffMs);
@@ -598,17 +603,17 @@ public final class EntryPool<T extends Entry> implements IBagStateListener {
 
         // Detect retrograde time, allowing +128ms as per NTP spec.
         if (plusMillis(now, 128) < plusMillis(previous, housekeepingPeriodMs)) {
-          logger.warn(
+          LOGGER.warn(
               "{} - Retrograde clock change detected (housekeeper delta={}), soft-evicting connections from pool.",
               poolName, elapsedDisplayString(previous, now));
           previous = now;
           // soft-evict from the pool
           softEvictEntry();
-          logger.debug("soft-evict from the pool");
+          LOGGER.debug("soft-evict from the pool");
           return;
         } else if (now > plusMillis(previous, (3 * housekeepingPeriodMs) / 2)) {
           // No point evicting for forward clock motion, this merely accelerates connection retirement anyway
-          logger.warn("{} - Thread starvation or clock leap detected (housekeeper delta={}).",
+          LOGGER.warn("{} - Thread starvation or clock leap detected (housekeeper delta={}).",
               poolName, elapsedDisplayString(previous, now));
         }
 
@@ -632,7 +637,7 @@ public final class EntryPool<T extends Entry> implements IBagStateListener {
 
         fillPool(true); // Try to maintain minimum connections
       } catch (Exception e) {
-        logger.error("Unexpected exception in housekeeping task", e);
+        LOGGER.error("Unexpected exception in housekeeping task", e);
       }
     }
   }

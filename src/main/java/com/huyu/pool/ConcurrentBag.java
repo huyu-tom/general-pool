@@ -30,6 +30,7 @@ import com.huyu.pool.utils.IWeakReference;
 import com.huyu.pool.utils.ThreadUtils;
 import jakarta.annotation.Nullable;
 import java.lang.ref.WeakReference;
+import java.util.ArrayList;
 import java.util.Collection;
 import java.util.Collections;
 import java.util.List;
@@ -127,11 +128,23 @@ public class ConcurrentBag<T extends IConcurrentBagEntryHolder> implements AutoC
     if (isSupportGetFromThreadLocal()) {
       final var list = threadList.get();
       while (list.size() > 0) {
-        final WeakReference<T> reference = list.removeLast();
-        final var bagEntry = reference.get();
-        if (bagEntry != null && predicate.test(bagEntry) && bagEntry.compareAndSet(STATE_NOT_IN_USE,
-            STATE_IN_USE)) {
-          return bagEntry;
+        WeakReference<T> reference = list.removeLast();
+        /**
+         * 按理来说我add进去的内容一定不是空的,本能不用判断的,但是采用了jdk.internal.misc.CarrierThreadLocal 可能removeLast()元素为空
+         * 可能原因
+         * <ul>
+         *   <li>虚拟线程来回切换在同一个载体线程(因为载体线程可能自己上下文切换?),里面的size在不同虚拟线程的栈帧上是不同的 </li>
+         *   <li>假设虚拟线程1拿到size为10,(切换),虚拟线程2拿到size也是为10,(切换)</li>
+         *   <li>虚拟县线程1执行removeLast(),那么size为10的值为null了，(切换)，虚拟线程size为10的元素,removeLast()为null</li>
+         * </ul>
+         * 注意: 切换逻辑代表切换到同一个载体线程
+         */
+        if (reference != null) {
+          final var bagEntry = reference.get();
+          if (bagEntry != null && predicate.test(bagEntry) && bagEntry.compareAndSet(
+              STATE_NOT_IN_USE, STATE_IN_USE)) {
+            return bagEntry;
+          }
         }
       }
     }
@@ -212,7 +225,7 @@ public class ConcurrentBag<T extends IConcurrentBagEntryHolder> implements AutoC
         //因为是虚拟线程的话,采用的是CarrierThreadLocal,他底层是存储到虚拟线程的载体线程当中
         //如果采用虚拟线程的哲学的话,载体线程一般是操作系统的核心数,一般较少,所以虚拟线程的CarrierThreadLocal上需要
         //放置更多的数据,用于快速借出,后期可进行配置
-        if (threadLocalList.size() < 512) {
+        if (threadLocalList.size() < 1024) {
           threadLocalList.add(new IWeakReference<>(bagEntry));
         }
       } else {

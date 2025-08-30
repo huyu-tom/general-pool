@@ -16,4 +16,13 @@ public class SuppliedCarrierThreadLocal<T> extends CarrierThreadLocal<T> {
   protected T initialValue() {
     return supplier.get();
   }
+
+  public static <T> ThreadLocal<T> createCarrierThreadLocal(Supplier<? extends T> supplier) {
+    return new CarrierThreadLocal<>() {
+      @Override
+      protected T initialValue() {
+        return supplier.get();
+      }
+    };
+  }
 }

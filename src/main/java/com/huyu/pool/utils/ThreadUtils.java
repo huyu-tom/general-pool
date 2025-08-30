@@ -10,9 +10,11 @@ import java.util.concurrent.RejectedExecutionHandler;
 import java.util.concurrent.ThreadFactory;
 import java.util.concurrent.ThreadPoolExecutor;
 import java.util.function.Supplier;
-import jdk.internal.misc.CarrierThreadLocal;
+import java.util.logging.Logger;
 
 public class ThreadUtils {
+
+  private static final Logger LOGGER = Logger.getLogger(ThreadUtils.class.getName());
 
   public static ThreadPoolExecutor createThreadPoolExecutor(final int queueSize,
       final String threadName, ThreadFactory threadFactory, final RejectedExecutionHandler policy) {
@@ -69,6 +71,8 @@ public class ThreadUtils {
       Class.forName("jdk.internal.misc.CarrierThreadLocal").newInstance();
     } catch (Throwable e) {
       isCarrierThreadAvailable = false;
+      LOGGER.warning(
+          "jdk.internal.misc.CarrierThreadLocal is not available in this JDK or not set --add-exports java.base/jdk.internal.misc=ALL-UNNAMED JVM arg");
     }
     CARRIER_THREAD_LOCAL_AVAILABLE = isCarrierThreadAvailable;
   }
@@ -87,7 +91,11 @@ public class ThreadUtils {
   @Nonnull
   public static <T> ThreadLocal<T> createThreadLocal(Supplier<? extends T> supplier) {
     if (isCarrierThreadLocalAvailable()) {
-      return new SuppliedCarrierThreadLocal(supplier);
+      try {
+        return SuppliedCarrierThreadLocal.createCarrierThreadLocal(supplier);
+      } catch (Throwable e) {
+        return ThreadLocal.withInitial(supplier);
+      }
     } else {
       return ThreadLocal.withInitial(supplier);
     }
