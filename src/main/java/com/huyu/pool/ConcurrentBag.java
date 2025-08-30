@@ -26,6 +26,7 @@ import static java.util.concurrent.TimeUnit.NANOSECONDS;
 import static java.util.concurrent.locks.LockSupport.parkNanos;
 
 import com.huyu.pool.utils.FastList;
+import com.huyu.pool.utils.IWeakReference;
 import com.huyu.pool.utils.ThreadUtils;
 import jakarta.annotation.Nullable;
 import java.lang.ref.WeakReference;
@@ -42,21 +43,35 @@ import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
 
 /**
+ *
+ * Copied from HikariCP, undergo secondary modification
+ *
  * @param <T>
+ * @author huyu
  */
 public class ConcurrentBag<T extends IConcurrentBagEntryHolder> implements AutoCloseable {
 
   private static final Logger LOGGER = LoggerFactory.getLogger(ConcurrentBag.class);
 
   /**
-   * 为了做到快速借出的话,我们添加的顺序是尾部添加,然后
+   * 采用了LRU的缓存,不采用原先(HikariCP)的CopyOnWriteArrayList
+   * <p>
+   * 原因:
+   * <ul>
+   * <li>1. 因为要做到通用池,对于数据库连接池的话,池中的对象一般相对较少,采用CopyOnWriteArrayList性能较高,但是如果是对象池的话,可能是上万甚至更高级别,不是很适合CopyOnWriteArrayList机制</li>
+   * <li>2. 由于高版本支持虚拟线程,虽然我采用了jdk.internal.misc.CarrierThreadLocal来解决虚拟线程threadlocal的问题(但是这个是非公开API,需要add-open功能),但是虚拟线程哲学无池化,导致从threadlocal快速借出就无意义,大部分都是
+   * 从sharedList借出,会导致后面借出的情况需要遍历之前已被解除的元素,相当于无效遍历,所以采用LRU机制来解决这个问题</li>
+   * </ul>
    */
   private final Collection<T> sharedList;
 
   /**
-   * 弱引用的目的是:
+   * 弱引用的目的是: 防止sharedList的对象已被移除,但是可能threadlocal还存在着
+   * 因为借出的时候,如果不在threadlocal借出,但是归还的话,会加入到threadlocal当中
+   * 如果后续这个对象被移除(超时,或者达到了最长的生存时间),那么threadlocal中的对象不会被移除(因为调用remove()操作不是之前归还的线程)
+   * 导致threadlocal可能存在着垃圾对象(小小的泄露),所以采用弱引用包裹(如果没有被sharedList强引用,就算threadlocal还存在,也是会被gc的)
    */
-  private final ThreadLocal<List<WeakReference<T>>> threadList;
+  private final ThreadLocal<List<IWeakReference<T>>> threadList;
 
   private final IBagStateListener listener;
 
@@ -79,9 +94,15 @@ public class ConcurrentBag<T extends IConcurrentBagEntryHolder> implements AutoC
     //也是为了快速借出,在归还的时候添加到头部(采用LRU的机制)
     this.sharedList = new ConcurrentLinkedHashSet<>();
     //为了达到快速借出的话,归还添加的时候是尾部添加,然后我们借出的时候是尾部遍历
-    this.threadList = ThreadUtils.createThreadLocal(() -> new FastList<>(WeakReference.class, 16));
+    this.threadList = ThreadUtils.createThreadLocal(() -> new FastList<>(IWeakReference.class, 16));
   }
 
+
+  /**
+   * 是否支持从threadlocal获取
+   *
+   * @return
+   */
   private boolean isSupportGetFromThreadLocal() {
     return ThreadUtils.isCarrierThreadLocalAvailable() || !Thread.currentThread().isVirtual();
   }
@@ -99,19 +120,17 @@ public class ConcurrentBag<T extends IConcurrentBagEntryHolder> implements AutoC
       throws InterruptedException {
 
     final boolean emptyPredicate = Objects.isNull(predicate);
-
     predicate = predicate == null ? (bag) -> true : predicate;
 
     // Try the thread-local list first
     // 不是虚拟线程或者说是支持CarrierThreadLocal我们才从线程本地获取
     if (isSupportGetFromThreadLocal()) {
       final var list = threadList.get();
-      for (var i = list.size() - 1; i >= 0; i--) {
-        final WeakReference<T> reference = list.remove(i);
+      while (list.size() > 0) {
+        final WeakReference<T> reference = list.removeLast();
         final var bagEntry = reference.get();
         if (bagEntry != null && predicate.test(bagEntry) && bagEntry.compareAndSet(STATE_NOT_IN_USE,
             STATE_IN_USE)) {
-          list.remove(i);
           return bagEntry;
         }
       }
@@ -135,9 +154,10 @@ public class ConcurrentBag<T extends IConcurrentBagEntryHolder> implements AutoC
       timeout = timeUnit.toNanos(timeout);
       do {
         final var start = currentTime();
-        final T bagEntry = handoffQueue.poll(timeout, NANOSECONDS);
-        if (bagEntry == null || emptyPredicate
-            || predicate.test(bagEntry) && bagEntry.compareAndSet(STATE_NOT_IN_USE, STATE_IN_USE)) {
+        //如果指定的时间过了之后,有可能返回null
+        final var bagEntry = handoffQueue.poll(timeout, NANOSECONDS);
+        if (bagEntry == null || (predicate.test(bagEntry) && bagEntry.compareAndSet(
+            STATE_NOT_IN_USE, STATE_IN_USE))) {
           return bagEntry;
         }
         timeout -= elapsedNanos(start);
@@ -186,11 +206,21 @@ public class ConcurrentBag<T extends IConcurrentBagEntryHolder> implements AutoC
       }
     }
 
-    //由于采用固定线程池异步请求,所以尽量将大量的数据放入到threadLocal当中提高速度
-    //不进行限制大小,尽量将所有的数据都能平摊到对应的threadLocal当中
     if (isSupportGetFromThreadLocal()) {
       final var threadLocalList = threadList.get();
-      threadLocalList.add(new WeakReference<>(bagEntry));
+      if (Thread.currentThread().isVirtual()) {
+        //因为是虚拟线程的话,采用的是CarrierThreadLocal,他底层是存储到虚拟线程的载体线程当中
+        //如果采用虚拟线程的哲学的话,载体线程一般是操作系统的核心数,一般较少,所以虚拟线程的CarrierThreadLocal上需要
+        //放置更多的数据,用于快速借出,后期可进行配置
+        if (threadLocalList.size() < 512) {
+          threadLocalList.add(new IWeakReference<>(bagEntry));
+        }
+      } else {
+        //如果不是虚拟线程的话,那么采用16个数据
+        if (threadLocalList.size() < 16) {
+          threadLocalList.add(new IWeakReference<>(bagEntry));
+        }
+      }
     }
   }
 
@@ -241,7 +271,7 @@ public class ConcurrentBag<T extends IConcurrentBagEntryHolder> implements AutoC
 
     //不一定remove的线程是归还的线程,所以为什么需要弱引用包裹
     if (isSupportGetFromThreadLocal()) {
-      threadList.get().remove(bagEntry);
+      threadList.get().remove(new IWeakReference<>(bagEntry));
     }
     return removed;
   }
@@ -340,10 +370,20 @@ public class ConcurrentBag<T extends IConcurrentBagEntryHolder> implements AutoC
 
   public int[] getStateCounts() {
     final var states = new int[6];
+    // 0 索引: 未使用
+    // 1 索引: 已使用
+    // 2,3 => 代表此槽未使用
+    //  -1 的状态是:  已被移除（不在sharedList列表当中）
+    //  -2 的状态是:  再被移除的前夕(即将被移除,但是还在sharedList列表当中),一种中间状态(不可被借出)
     for (var e : sharedList) {
-      ++states[e.getState()];
+      final int state = e.getState();
+      if (state >= 0) {
+        ++states[state];
+      }
     }
+    // 4索引: 总共个数
     states[4] = sharedList.size();
+    // 5索引: 等待个数(这个过高,说明数量不足,需要加大最大个数)
     states[5] = waiters.get();
     return states;
   }
