@@ -20,6 +20,7 @@ import static com.huyu.pool.ClockSource.currentTime;
 import static com.huyu.pool.ClockSource.elapsedDisplayString;
 import static com.huyu.pool.ClockSource.elapsedMillis;
 
+import com.huyu.pool.utils.UnsafeUtils;
 import java.util.Objects;
 import java.util.concurrent.ScheduledFuture;
 import java.util.concurrent.atomic.AtomicIntegerFieldUpdater;
@@ -35,7 +36,12 @@ import org.slf4j.LoggerFactory;
 final class PoolEntryHolder<T> implements IConcurrentBagEntryHolder {
 
   private static final Logger LOGGER = LoggerFactory.getLogger(PoolEntryHolder.class);
-  private static final AtomicIntegerFieldUpdater<PoolEntryHolder> stateUpdater;
+
+  private static final AtomicIntegerFieldUpdater<PoolEntryHolder> STATE_UPDATER;
+
+  private static final long STATE_OFFSET;
+
+
   //在池中,大概率创建频率不高,就不采用LongAddr
   private static final AtomicLong ID = new AtomicLong();
 
@@ -55,7 +61,17 @@ final class PoolEntryHolder<T> implements IConcurrentBagEntryHolder {
 
 
   static {
-    stateUpdater = AtomicIntegerFieldUpdater.newUpdater(PoolEntryHolder.class, "state");
+    STATE_UPDATER = AtomicIntegerFieldUpdater.newUpdater(PoolEntryHolder.class, "state");
+    long stateOffset = -1;
+    if (UnsafeUtils.isUnsafeAvailable()) {
+      try {
+        stateOffset = UnsafeUtils.getUnsafe()
+            .objectFieldOffset(PoolEntryHolder.class.getDeclaredField("state"));
+      } catch (NoSuchFieldException e) {
+        throw new RuntimeException(e);
+      }
+    }
+    STATE_OFFSET = stateOffset;
   }
 
   PoolEntryHolder(final T entry, final EntryPool entryPool) {
@@ -141,7 +157,11 @@ final class PoolEntryHolder<T> implements IConcurrentBagEntryHolder {
    */
   @Override
   public int getState() {
-    return stateUpdater.get(this);
+    if (UnsafeUtils.isUnsafeAvailable()) {
+      return UnsafeUtils.getUnsafe().getIntVolatile(this, STATE_OFFSET);
+    } else {
+      return STATE_UPDATER.get(this);
+    }
   }
 
 
@@ -150,7 +170,11 @@ final class PoolEntryHolder<T> implements IConcurrentBagEntryHolder {
    */
   @Override
   public boolean compareAndSet(int expect, int update) {
-    return stateUpdater.compareAndSet(this, expect, update);
+    if (UnsafeUtils.isUnsafeAvailable()) {
+      return UnsafeUtils.getUnsafe().compareAndSetInt(this, STATE_OFFSET, expect, update);
+    } else {
+      return STATE_UPDATER.compareAndSet(this, expect, update);
+    }
   }
 
   /**
@@ -158,7 +182,11 @@ final class PoolEntryHolder<T> implements IConcurrentBagEntryHolder {
    */
   @Override
   public void setState(int update) {
-    stateUpdater.set(this, update);
+    if (UnsafeUtils.isUnsafeAvailable()) {
+      UnsafeUtils.getUnsafe().putIntVolatile(this, STATE_OFFSET, update);
+    } else {
+      STATE_UPDATER.set(this, update);
+    }
   }
 
   T close() {
