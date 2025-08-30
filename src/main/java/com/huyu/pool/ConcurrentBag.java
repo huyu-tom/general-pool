@@ -123,23 +123,34 @@ public class ConcurrentBag<T extends IConcurrentBagEntryHolder> implements AutoC
     final boolean emptyPredicate = Objects.isNull(predicate);
     predicate = predicate == null ? (bag) -> true : predicate;
 
-    // Try the thread-local list first
-    // 不是虚拟线程或者说是支持CarrierThreadLocal我们才从线程本地获取
     if (isSupportGetFromThreadLocal()) {
+      // Try the thread-local list first
       final var list = threadList.get();
-      while (list.size() > 0) {
-        WeakReference<T> reference = list.removeLast();
-        /**
-         * 按理来说我add进去的内容一定不是空的,本能不用判断的,但是采用了jdk.internal.misc.CarrierThreadLocal 可能removeLast()元素为空
-         * 可能原因
-         * <ul>
-         *   <li>虚拟线程来回切换在同一个载体线程(因为载体线程可能自己上下文切换?),里面的size在不同虚拟线程的栈帧上是不同的 </li>
-         *   <li>假设虚拟线程1拿到size为10,(切换),虚拟线程2拿到size也是为10,(切换)</li>
-         *   <li>虚拟县线程1执行removeLast(),那么size为10的值为null了，(切换)，虚拟线程size为10的元素,removeLast()为null</li>
-         * </ul>
-         * 注意: 切换逻辑代表切换到同一个载体线程
-         */
-        if (reference != null) {
+      if (Thread.currentThread().isVirtual()) {
+        while (list.size() > 0) {
+          WeakReference<T> reference = list.removeLast();
+          /**
+           * 按理来说我add进去的内容一定不是空的,本能不用判断的,但是采用了jdk.internal.misc.CarrierThreadLocal 可能removeLast()元素为空
+           * 可能原因
+           * <ul>
+           *   <li>虚拟线程来回切换在同一个载体线程(因为载体线程可能自己上下文切换?),里面的size在不同虚拟线程的栈帧上是不同的 </li>
+           *   <li>假设虚拟线程1拿到size为10,(切换),虚拟线程2拿到size也是为10,(切换)</li>
+           *   <li>虚拟县线程1执行removeLast(),那么size为10的值为null了，(切换)，虚拟线程size为10的元素,removeLast()为null</li>
+           * </ul>
+           * 注意: 切换逻辑代表切换到同一个载体线程
+           */
+          if (reference != null) {
+            final var bagEntry = reference.get();
+            if (bagEntry != null && predicate.test(bagEntry) && bagEntry.compareAndSet(
+                STATE_NOT_IN_USE, STATE_IN_USE)) {
+              return bagEntry;
+            }
+          }
+        }
+      } else {
+        //非虚拟线程,减少一次判断
+        while (list.size() > 0) {
+          WeakReference<T> reference = list.removeLast();
           final var bagEntry = reference.get();
           if (bagEntry != null && predicate.test(bagEntry) && bagEntry.compareAndSet(
               STATE_NOT_IN_USE, STATE_IN_USE)) {
