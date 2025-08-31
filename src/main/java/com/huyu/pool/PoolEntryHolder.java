@@ -33,7 +33,7 @@ import org.slf4j.LoggerFactory;
  *
  * @author huyu
  */
-final class PoolEntryHolder<T> implements IConcurrentBagEntryHolder {
+final class PoolEntryHolder<T extends Entry> implements IConcurrentBagEntryHolder {
 
   private static final Logger LOGGER = LoggerFactory.getLogger(PoolEntryHolder.class);
 
@@ -46,13 +46,17 @@ final class PoolEntryHolder<T> implements IConcurrentBagEntryHolder {
   private static final AtomicLong ID = new AtomicLong();
 
   long lastAccessed;
-  long lastBorrowed;
-  final long id;
 
+  long lastBorrowed;
+
+  //Id
+  final long id;
   @SuppressWarnings("FieldCanBeLocal")
   private volatile int state = 0;
+  //是否被驱逐
   private volatile boolean evict;
 
+  //条目
   private T entry;
 
   private volatile ScheduledFuture<?> endOfLife;
@@ -87,7 +91,7 @@ final class PoolEntryHolder<T> implements IConcurrentBagEntryHolder {
   /**
    * Release this entry back to the pool.
    */
-  void recycle() {
+  public void recycle() {
     if (entry != null) {
       this.lastAccessed = currentTime();
       if (this.proxyLeakTask != null) {
@@ -98,7 +102,7 @@ final class PoolEntryHolder<T> implements IConcurrentBagEntryHolder {
     }
   }
 
-  T entry() {
+  public T entry() {
     return entry;
   }
 
@@ -245,7 +249,7 @@ final class PoolEntryHolder<T> implements IConcurrentBagEntryHolder {
     return Objects.hashCode(id);
   }
 
-  public ProxyLeakTask getProxyLeakTask() {
+  ProxyLeakTask getProxyLeakTask() {
     return proxyLeakTask;
   }
 

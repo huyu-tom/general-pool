@@ -5,9 +5,12 @@ package com.huyu.pool;
  *
  * @param <T>
  */
-public class EntryCredentials<T extends Entry> {
+public final class EntryCredentials<T extends Entry> {
 
+  //条目的持有者
   final PoolEntryHolder<T> holder;
+
+  //条目
   final T entry;
 
   public EntryCredentials(PoolEntryHolder<T> holder) {
@@ -28,8 +31,7 @@ public class EntryCredentials<T extends Entry> {
    * 归还
    */
   public void recycle() {
-    //归还清除本身的数据
-    entry.clear();
+    this.entry.clear();
     this.holder.recycle();
   }
 }

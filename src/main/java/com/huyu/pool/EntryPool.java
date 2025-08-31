@@ -281,7 +281,7 @@ public final class EntryPool<T extends Entry> implements IBagStateListener {
 
 
   /**
-   * 驱逐条目
+   * 驱逐条目(用户自己来关闭条目)
    *
    * @param entry
    */
