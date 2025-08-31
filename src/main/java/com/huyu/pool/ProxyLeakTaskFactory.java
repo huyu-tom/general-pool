@@ -21,33 +21,30 @@ import java.util.concurrent.ScheduledExecutorService;
 /**
  * A factory for {@link ProxyLeakTask} Runnables that are scheduled in the future to report leaks.
  *
- * @author Brett Wooldridge
- * @author Andreas Brenk
+ * @author huyu
  */
-class ProxyLeakTaskFactory
-{
-   private ScheduledExecutorService executorService;
-   private long leakDetectionThreshold;
+class ProxyLeakTaskFactory {
 
-   ProxyLeakTaskFactory(final long leakDetectionThreshold, final ScheduledExecutorService executorService)
-   {
-      this.executorService = executorService;
-      this.leakDetectionThreshold = leakDetectionThreshold;
-   }
+  private ScheduledExecutorService executorService;
+  private long leakDetectionThreshold;
 
-   ProxyLeakTask schedule(final PoolEntryHolder poolEntry)
-   {
-      return (leakDetectionThreshold == 0) ? ProxyLeakTask.NO_LEAK : scheduleNewTask(poolEntry);
-   }
+  ProxyLeakTaskFactory(final long leakDetectionThreshold,
+      final ScheduledExecutorService executorService) {
+    this.executorService = executorService;
+    this.leakDetectionThreshold = leakDetectionThreshold;
+  }
 
-   void updateLeakDetectionThreshold(final long leakDetectionThreshold)
-   {
-      this.leakDetectionThreshold = leakDetectionThreshold;
-   }
+  ProxyLeakTask schedule(final PoolEntryHolder poolEntry) {
+    return (leakDetectionThreshold == 0) ? ProxyLeakTask.NO_LEAK : scheduleNewTask(poolEntry);
+  }
 
-   private ProxyLeakTask scheduleNewTask(PoolEntryHolder poolEntry) {
-      var task = new ProxyLeakTask(poolEntry);
-      task.schedule(executorService, leakDetectionThreshold);
-      return task;
-   }
+  void updateLeakDetectionThreshold(final long leakDetectionThreshold) {
+    this.leakDetectionThreshold = leakDetectionThreshold;
+  }
+
+  private ProxyLeakTask scheduleNewTask(PoolEntryHolder poolEntry) {
+    var task = new ProxyLeakTask(poolEntry);
+    task.schedule(executorService, leakDetectionThreshold);
+    return task;
+  }
 }
