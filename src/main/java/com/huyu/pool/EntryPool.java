@@ -105,6 +105,9 @@ public final class EntryPool<T extends Entry> implements IBagStateListener {
   //借出的时候的超时时间
   private long fetchTimeout;
 
+  //泄漏工厂
+  private ProxyLeakTaskFactory proxyLeakTaskFactory;
+
   /**
    * Construct a HikariPool with the specified configuration.
    *
@@ -144,6 +147,10 @@ public final class EntryPool<T extends Entry> implements IBagStateListener {
     //保持最小(驱逐) => 30s执行一次
     this.houseKeeperTask = houseKeepingExecutorService.scheduleWithFixedDelay(new HouseKeeper(),
         100L, housekeepingPeriodMs, MILLISECONDS);
+
+    //泄露工厂
+    proxyLeakTaskFactory = new ProxyLeakTaskFactory(poolConfig.getLeakDetectionThreshold(),
+        houseKeepingExecutorService);
   }
 
 
@@ -198,6 +205,9 @@ public final class EntryPool<T extends Entry> implements IBagStateListener {
               : DEAD_CONNECTION_MESSAGE);
           timeout = hardTimeout - elapsedMillis(startTime);
         } else {
+          //增加泄漏检测
+          ProxyLeakTask proxyLeakTask = proxyLeakTaskFactory.schedule(poolEntryHolder);
+          poolEntryHolder.setProxyLeakTask(proxyLeakTask);
           return new EntryCredentials<>(poolEntryHolder);
         }
       } while (timeout > 0L);

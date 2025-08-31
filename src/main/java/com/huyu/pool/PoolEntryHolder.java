@@ -59,6 +59,9 @@ final class PoolEntryHolder<T> implements IConcurrentBagEntryHolder {
 
   private final EntryPool entryPool;
 
+  //泄漏检测任务,当被借出去的时候才会有值,当归还或者关闭这个(一般被移除了)任务会被取消,置为空
+  private volatile ProxyLeakTask proxyLeakTask;
+
 
   static {
     STATE_UPDATER = AtomicIntegerFieldUpdater.newUpdater(PoolEntryHolder.class, "state");
@@ -87,6 +90,10 @@ final class PoolEntryHolder<T> implements IConcurrentBagEntryHolder {
   void recycle() {
     if (entry != null) {
       this.lastAccessed = currentTime();
+      if (this.proxyLeakTask != null) {
+        proxyLeakTask.cancel();
+        proxyLeakTask = null;
+      }
       entryPool.recycle(this);
     }
   }
@@ -193,12 +200,16 @@ final class PoolEntryHolder<T> implements IConcurrentBagEntryHolder {
     var eol = endOfLife;
     if (eol != null && !eol.isDone() && !eol.cancel(false)) {
       LOGGER.warn(
-          "{} - maxLifeTime expiration task cancellation unexpectedly returned false for connection {}",
+          "{} - maxLifeTime expiration task cancellation unexpectedly returned false for entry {}",
           getPoolName(), entry);
     }
     var tmp = entry;
+    if (proxyLeakTask != null) {
+      proxyLeakTask.cancel();
+    }
     entry = null;
     endOfLife = null;
+    proxyLeakTask = null;
     return tmp;
   }
 
@@ -232,5 +243,14 @@ final class PoolEntryHolder<T> implements IConcurrentBagEntryHolder {
   @Override
   public int hashCode() {
     return Objects.hashCode(id);
+  }
+
+  public ProxyLeakTask getProxyLeakTask() {
+    return proxyLeakTask;
+  }
+
+  PoolEntryHolder<T> setProxyLeakTask(ProxyLeakTask proxyLeakTask) {
+    this.proxyLeakTask = proxyLeakTask;
+    return this;
   }
 }

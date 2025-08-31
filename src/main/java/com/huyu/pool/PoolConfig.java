@@ -36,6 +36,11 @@ public class PoolConfig {
    */
   private String poolName;
 
+  /**
+   * 泄漏阈值
+   */
+  private volatile int leakDetectionThreshold;
+
 
   public long getIdleTimeout() {
     return IdleTimeout;
@@ -89,6 +94,15 @@ public class PoolConfig {
 
   public PoolConfig setFetchTimeout(int fetchTimeout) {
     this.fetchTimeout = fetchTimeout;
+    return this;
+  }
+
+  public int getLeakDetectionThreshold() {
+    return leakDetectionThreshold;
+  }
+
+  public PoolConfig setLeakDetectionThreshold(int leakDetectionThreshold) {
+    this.leakDetectionThreshold = leakDetectionThreshold;
     return this;
   }
 }

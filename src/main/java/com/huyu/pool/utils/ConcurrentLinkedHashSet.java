@@ -1,4 +1,4 @@
-package com.huyu.pool;
+package com.huyu.pool.utils;
 
 import com.googlecode.concurrentlinkedhashmap.ConcurrentLinkedHashMap;
 import com.googlecode.concurrentlinkedhashmap.Weighers;
