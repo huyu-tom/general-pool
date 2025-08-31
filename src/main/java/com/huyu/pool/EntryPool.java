@@ -76,8 +76,12 @@ public final class EntryPool<T extends Entry> implements IBagStateListener {
 
   //无条件的条目创建者
   private final PoolEntryCreator poolEntryCreator = new PoolEntryCreator();
+
+
   //带有条件的条目创建者
   private final PoolEntryCreator poolEntryCreatorWithPredicate = new PoolEntryCreator(true);
+
+
   private final PoolEntryCreator postFillPoolEntryCreator = new PoolEntryCreator("After adding ");
 
   private final ThreadPoolExecutor addEntryExecutor;
@@ -88,7 +92,6 @@ public final class EntryPool<T extends Entry> implements IBagStateListener {
 
   //保持最小条目池(当池空闲的时候,会将扩充的池条目减少到最小条目) 和 设置每个条目的最长生存时间 任务的执行器
   private final ScheduledExecutorService houseKeepingExecutorService;
-
 
   //保持最小条目池的任务
   private ScheduledFuture<?> houseKeeperTask;

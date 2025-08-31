@@ -6,6 +6,9 @@ package com.huyu.pool;
 public class PoolConfig {
 
 
+  /**
+   * 池条目空闲时间
+   */
   private volatile long IdleTimeout;
 
   /**

@@ -39,8 +39,8 @@ final class PoolEntryHolder<T> implements IConcurrentBagEntryHolder {
 
   private static final AtomicIntegerFieldUpdater<PoolEntryHolder> STATE_UPDATER;
 
+  //采用Unsafe的时候采用
   private static final long STATE_OFFSET;
-
 
   //在池中,大概率创建频率不高,就不采用LongAddr
   private static final AtomicLong ID = new AtomicLong();
