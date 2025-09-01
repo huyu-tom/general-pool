@@ -21,7 +21,6 @@
   <properties>
     <project.build.sourceEncoding>UTF-8</project.build.sourceEncoding>
     <java.version>21</java.version>
-    <!--    <java.release.version>21</java.release.version>-->
     <java.source.version>21</java.source.version>
     <java.test.version>21</java.test.version>
     <java.test.release.version>21</java.test.release.version>

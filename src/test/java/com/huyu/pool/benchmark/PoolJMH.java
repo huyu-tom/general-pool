@@ -38,8 +38,8 @@ import org.slf4j.LoggerFactory;
 @BenchmarkMode(Mode.Throughput)
 @OutputTimeUnit(TimeUnit.SECONDS)
 @Fork(value = 1, jvmArgs = {"-Xms4g", "-Xmx4g"})
-@Warmup(iterations = 1, time = 60)
-@Measurement(iterations = 2, time = 60)
+@Warmup(iterations = 1, time = 5)
+@Measurement(iterations = 2, time = 5)
 public class PoolJMH {
 
   private static final Logger LOGGER = LoggerFactory.getLogger(PoolJMH.class);
@@ -137,9 +137,9 @@ public class PoolJMH {
   @Threads(36)
   public void generalPool(Blackhole blackhole) throws InterruptedException, TimeoutException {
     EntryCredentials<CommonsPoolEntry> entry = null;
-    entry = pool.getEntry(Long.MAX_VALUE);
     //模拟逻辑
     try {
+      entry = pool.getEntry(Long.MAX_VALUE);
       entry.getEntry().use();
     } finally {
       entry.recycle();
@@ -156,9 +156,7 @@ public class PoolJMH {
       // 模拟使用
       entry.use();
     } finally {
-      if (entry != null) {
-        commonsPool.returnObject(entry);
-      }
+      commonsPool.returnObject(entry);
       blackhole.consume(entry);
     }
   }

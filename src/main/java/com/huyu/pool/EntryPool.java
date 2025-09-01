@@ -29,6 +29,7 @@ import static java.util.concurrent.TimeUnit.MILLISECONDS;
 import static java.util.concurrent.TimeUnit.SECONDS;
 
 import com.huyu.pool.utils.ThreadUtils.DefaultThreadFactory;
+import jakarta.annotation.Nonnull;
 import jakarta.annotation.Nullable;
 import java.sql.SQLException;
 import java.util.Objects;
@@ -166,6 +167,7 @@ public final class EntryPool<T extends Entry> implements IBagStateListener {
    * @return
    * @throws SQLException
    */
+  @Nonnull
   public EntryCredentials<T> getEntry(Predicate<T> predicate) throws TimeoutException {
     return getEntry(fetchTimeout <= 0 ? Long.MAX_VALUE : fetchTimeout, predicate);
   }
@@ -178,11 +180,13 @@ public final class EntryPool<T extends Entry> implements IBagStateListener {
    * @return
    * @throws TimeoutException
    */
+  @Nonnull
   public EntryCredentials<T> getEntry(final long hardTimeout) throws TimeoutException {
     return getEntry(hardTimeout, null);
   }
 
 
+  @Nonnull
   public EntryCredentials<T> getEntry(final long hardTimeout, @Nullable Predicate<T> predicate)
       throws TimeoutException {
     final var startTime = currentTime();
@@ -210,6 +214,7 @@ public final class EntryPool<T extends Entry> implements IBagStateListener {
           return new EntryCredentials<>(poolEntryHolder);
         }
       } while (timeout > 0L);
+
       throw new TimeoutException("get entry timeout");
     } catch (InterruptedException e) {
       Thread.currentThread().interrupt();
