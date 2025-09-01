@@ -21,7 +21,7 @@
   <properties>
     <project.build.sourceEncoding>UTF-8</project.build.sourceEncoding>
     <java.version>21</java.version>
-    <java.release.version>21</java.release.version>
+    <!--    <java.release.version>21</java.release.version>-->
     <java.source.version>21</java.source.version>
     <java.test.version>21</java.test.version>
     <java.test.release.version>21</java.test.release.version>
@@ -54,14 +54,6 @@
 
 
     <dependency>
-      <groupId>com.googlecode.concurrentlinkedhashmap</groupId>
-      <artifactId>concurrentlinkedhashmap-lru</artifactId>
-      <version>1.4.2</version>
-      <scope>compile</scope>
-    </dependency>
-
-
-    <dependency>
       <groupId>org.openjdk.jmh</groupId>
       <artifactId>jmh-core</artifactId>
       <version>${jmh.version}</version>
@@ -73,6 +65,13 @@
       <groupId>org.openjdk.jmh</groupId>
       <artifactId>jmh-generator-annprocess</artifactId>
       <version>${jmh.version}</version>
+      <scope>test</scope>
+    </dependency>
+
+    <dependency>
+      <groupId>org.apache.commons</groupId>
+      <artifactId>commons-pool2</artifactId>
+      <version>2.12.0</version>
       <scope>test</scope>
     </dependency>
   </dependencies>

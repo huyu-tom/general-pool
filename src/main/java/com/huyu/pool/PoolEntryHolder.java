@@ -211,6 +211,7 @@ final class PoolEntryHolder<T extends Entry> implements IConcurrentBagEntryHolde
     if (proxyLeakTask != null) {
       proxyLeakTask.cancel();
     }
+    entry.clear();
     entry = null;
     endOfLife = null;
     proxyLeakTask = null;

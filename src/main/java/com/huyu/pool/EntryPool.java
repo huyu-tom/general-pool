@@ -74,21 +74,21 @@ public final class EntryPool<T extends Entry> implements IBagStateListener {
 
   private static final String DEAD_CONNECTION_MESSAGE = "(entry is dead)";
 
+
   //无条件的条目创建者
   private final PoolEntryCreator poolEntryCreator = new PoolEntryCreator();
-
 
   //带有条件的条目创建者
   private final PoolEntryCreator poolEntryCreatorWithPredicate = new PoolEntryCreator(true);
 
-
   private final PoolEntryCreator postFillPoolEntryCreator = new PoolEntryCreator("After adding ");
 
   private final ThreadPoolExecutor addEntryExecutor;
+
   private final ThreadPoolExecutor clearEntryExecutor;
 
   //核心包
-  private final ConcurrentBag<PoolEntryHolder<T>> entryBag;
+  private final IConcurrentBag<PoolEntryHolder<T>> entryBag;
 
   //保持最小条目池(当池空闲的时候,会将扩充的池条目减少到最小条目) 和 设置每个条目的最长生存时间 任务的执行器
   private final ScheduledExecutorService houseKeepingExecutorService;
@@ -135,14 +135,13 @@ public final class EntryPool<T extends Entry> implements IBagStateListener {
     //添加条目执行器
     this.addEntryExecutor = createThreadPoolExecutor(addConnectionQueue, poolName + " entry adder",
         threadFactory, new CustomDiscardPolicy());
-
-    //清除条目执行器
-    this.clearEntryExecutor = createThreadPoolExecutor(maxPoolSize, poolName + " entry closer",
-        threadFactory, new ThreadPoolExecutor.CallerRunsPolicy());
-
     addEntryExecutor.setMaximumPoolSize(Math.min(16, Runtime.getRuntime().availableProcessors()));
     addEntryExecutor.setCorePoolSize(Math.min(16, Runtime.getRuntime().availableProcessors()));
     addEntryExecutor.allowCoreThreadTimeOut(false);
+
+    //清除条目执行器 1个核心,阻塞队列个数(设置最大池个数)
+    this.clearEntryExecutor = createThreadPoolExecutor(maxPoolSize, poolName + " entry closer",
+        threadFactory, new ThreadPoolExecutor.CallerRunsPolicy());
 
     //保持最小(驱逐) => 30s执行一次
     this.houseKeeperTask = houseKeepingExecutorService.scheduleWithFixedDelay(new HouseKeeper(),
@@ -238,7 +237,7 @@ public final class EntryPool<T extends Entry> implements IBagStateListener {
    *
    * @throws InterruptedException thrown if the thread is interrupted during shutdown
    */
-  public synchronized void shutdown() throws InterruptedException {
+  public synchronized void shutdown() throws Exception {
     try {
       poolState = POOL_SHUTDOWN;
 
@@ -394,8 +393,8 @@ public final class EntryPool<T extends Entry> implements IBagStateListener {
    */
   void closeEntry(final PoolEntryHolder poolEntryHolder, final String closureReason) {
     if (entryBag.remove(poolEntryHolder)) {
-      poolEntryHolder.close();
       clearEntryExecutor.execute(() -> {
+        poolEntryHolder.close();
         if (poolState == POOL_NORMAL) {
           fillPool(false);
         }
@@ -585,14 +584,17 @@ public final class EntryPool<T extends Entry> implements IBagStateListener {
      */
     private boolean shouldContinueCreating() {
       synchronized (PoolEntryCreator.class) {
+        //在池中有空闲的条目个数
         final int idleEntry = getIdleEntry();
+        //等待的线程数
         final int waitingThreadCount = entryBag.getWaitingThreadCount();
+        //池的状态是正常的 并且  池是否满了 并且
         return poolState == POOL_NORMAL && getTotalEntry() < poolConfig.getMaxPoolSize() && (
-            //必须达到最小
-            idleEntry < poolConfig.getMinIdle() || (
-                //非最近使用情况,并且具有等待数
-                hasPredicate && waitingThreadCount > 0)
-                //等待数如果大于空闲的数据的话,说明还必须创建
+            //说明池中的空闲个数还不足,没有达到设定的值
+            idleEntry < poolConfig.getMinIdle() ||
+                //还有人在等待者 (有条件的话,有可能空闲的不符合条件,所以这里加上一个有条件判断，有条件就不进行判断空闲和等待线程个数)
+                (hasPredicate && waitingThreadCount > 0)
+                //还有人在等待着
                 || waitingThreadCount > idleEntry);
       }
     }
